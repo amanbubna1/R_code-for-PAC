@@ -1,0 +1,97 @@
+```{r}
+#Loading the data
+analysis = read.csv("C:/Users/Aman Pace Uni/Desktop/ONLY PAC FILES YOU NEED/analysisData.csv")
+```
+
+```{r}
+#Looking at the structure of the data
+str(analysis)
+#Assinging N/A values to blank cells.
+analysis[analysis == ""] <- NA
+```
+
+```{r}
+# Removing Columns with more than 20% missing data
+library(dplyr)
+missing_percentage <- colMeans(is.na(analysis)) * 100
+columns_to_remove <- names(missing_percentage[missing_percentage > 20])
+analysis <- analysis[, !names(analysis) %in% columns_to_remove]
+```
+
+```{r}
+# Removing Rows with more than 20% missing data
+missing_percentage <- rowMeans(is.na(analysis)) * 100
+rows_to_remove <- which(missing_percentage > 19)
+analysis <- analysis[-rows_to_remove, ]
+```
+
+```{r}
+# Identify numeric columns and imputing numeric columns with mean
+numeric_columns <- sapply(analysis, is.numeric)
+analysis[, numeric_columns] <- lapply(analysis[, numeric_columns], function(x) {
+  ifelse(is.na(x), mean(x, na.rm = TRUE), x)})
+```
+
+```{r}
+#Removing the unwanted columns from the scoring data, *CANNOT delete rows!
+scoring = read.csv("C:/Users/Aman Pace Uni/Desktop/ONLY PAC FILES YOU NEED/scoringData.csv")
+scoring[scoring == ""] <- NA
+common_columns <- intersect(names(analysis), names(scoring))
+scoring <- scoring[, common_columns]
+```
+
+```{r}
+#Imputing numeric columns in scoring data
+numeric_columns <- sapply(scoring, is.numeric)
+scoring[, numeric_columns] <- lapply(scoring[, numeric_columns], function(x) {
+  ifelse(is.na(x), mean(x, na.rm = TRUE), x)})
+
+```
+
+```{r}
+#Columns chosen - make_name, body_type, wheelbase_inches, back_legroom_inches, front_legroom_inches, length_inches, width_inches, height_inches, horsepower, daysonmarket, franchise_dealer, is_new, listing_color, mileage, seller_rating
+
+#Converting characters into dummy variables
+
+train <- analysis[, c("make_name", "body_type", "wheelbase_inches", "back_legroom_inches", "front_legroom_inches", "length_inches", "width_inches", "height_inches", "horsepower", "daysonmarket", "franchise_dealer", "is_new", "listing_color", "mileage", "seller_rating")]
+#library(vtreat)
+trt = designTreatmentsZ(dframe = train,
+                        varlist = names(train)[1:15])
+newvars = trt$scoreFrame[trt$scoreFrame$code%in% c('clean','lev'),'varName']
+train_input = prepare(treatmentplan = trt, 
+                      dframe = train,
+                      varRestriction = newvars)
+test <- scoring[, c("make_name", "body_type", "wheelbase_inches", "back_legroom_inches", "front_legroom_inches", "length_inches", "width_inches", "height_inches", "horsepower", "daysonmarket", "franchise_dealer", "is_new", "listing_color", "mileage", "seller_rating")]
+trt = designTreatmentsZ(dframe = test,
+                        varlist = names(test)[1:15])
+newvars = trt$scoreFrame[trt$scoreFrame$code%in% c('clean','lev'),'varName']
+test_input = prepare(treatmentplan = trt, 
+                      dframe = test,
+                      varRestriction = newvars)
+
+```
+
+```{r}
+#saving the newly made files as CSV
+setwd("C:/Users/Aman Pace Uni/Desktop/ONLY PAC FILES YOU NEED/Submissions")
+write.csv(train_input, 'train_input.csv',row.names = F)
+write.csv(test_input, 'test_input.csv',row.names = F)
+```
+
+```{r}
+#Running Xgboost on the train_input data
+#library(xgboost)
+xgboost = xgboost(data=as.matrix(train_input), 
+                  label = analysis$price,
+                  nrounds=50000,
+                  verbose = 0,
+                  early_stopping_rounds = 30)
+xgboost$best_iteration
+```
+
+```{r}
+pred = predict(xgboost,newdata=as.matrix(test_input))
+setwd("C:/Users/Aman Pace Uni/Desktop/ONLY PAC FILES YOU NEED/Submissions")
+submissionFile = data.frame(id = scoring$id, price = pred)
+write.csv(submissionFile, 'sample_submission300.csv',row.names = F)
+```
